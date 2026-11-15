@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ckb" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#070B1A">
+<title>Duel</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Duel">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+html{background:#070B1A}
+html,body{height:100%;overflow:hidden;touch-action:none}
+body{font-family:'Vazirmatn',system-ui,sans-serif;color:#EEF1FB}
+canvas{position:fixed;left:0;top:0;display:block}
+#sc{position:fixed;top:calc(env(safe-area-inset-top) + 10px);left:0;right:0;text-align:center;font-weight:800;font-size:18px;pointer-events:none;direction:ltr;text-shadow:0 0 12px rgba(0,0,0,.6)}
+#msg{position:fixed;left:0;right:0;top:40%;text-align:center;font-weight:800;font-size:44px;pointer-events:none;text-shadow:0 0 22px rgba(124,243,208,.7);color:#7CF3D0}
+.ab{position:fixed;border-radius:50%;border:2px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);color:#fff;display:none;align-items:center;justify-content:center;font-size:30px}
+#fire{right:22px;bottom:calc(env(safe-area-inset-bottom) + 34px);width:92px;height:92px;background:rgba(255,90,140,.28);border-color:rgba(255,120,170,.7)}
+#dash{right:128px;bottom:calc(env(safe-area-inset-bottom) + 30px);width:66px;height:66px;font-size:24px}
+#ov{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:24px;background:radial-gradient(circle,rgba(7,11,26,.6),rgba(7,11,26,.93))}
+#ov h1{font-size:44px;font-weight:800;direction:ltr}
+#ov p{color:#9AA6C8;line-height:1.9;max-width:300px;white-space:pre-line}
+#ov button{background:linear-gradient(135deg,#7B61FF,#31E0A8);color:#07101F;border:0;border-radius:99px;padding:14px 38px;font:inherit;font-weight:800;font-size:18px}
+#ov input{font:inherit;font-size:24px;text-align:center;letter-spacing:6px;width:170px;padding:10px;border-radius:14px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;direction:ltr;user-select:text;-webkit-user-select:text}
+.row{display:flex;gap:10px;align-items:center}
+.row button{padding:12px 24px;font-size:16px}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="sc"></div><div id="msg"></div>
+<button class="ab" id="dash">⚡</button><button class="ab" id="fire">🔥</button>
+<div id="ov"><h1>Duel</h1><p id="st">دوو کەس، دوو مۆبایل. دژی یەک بجەنگن! سێ جار ببە براوە.</p>
+<button id="host">ژوورێک دروست بکە</button>
+<div class="row"><input id="code" inputmode="numeric" maxlength="4" placeholder="0000"><button id="join">بچۆ ژوورەوە</button></div>
+<button id="again" style="display:none">دووبارە</button></div>
+<script>
+const $ = id => document.getElementById(id), cv = $("c"), ctx = cv.getContext("2d"), EX = 220;
+const rnd = (a, b) => a + Math.random() * (b - a);
+const AW = 360, AH = 640, PIL = [[110, 250, 26], [250, 390, 26], [180, 320, 16]];
+
+/* ---------- screen (بێ بۆشایی) ---------- */
+let W, H, h0, dpr, sc, ox, oy;
+const probe = document.createElement("div");
+probe.style.cssText = "position:fixed;left:0;top:0;right:0;bottom:0;visibility:hidden;pointer-events:none";
+document.body.appendChild(probe);
+function resize(){
+  dpr = Math.min(devicePixelRatio || 1, 2);
+  const r = probe.getBoundingClientRect(), vv = window.visualViewport;
+  let h = Math.max(Math.round(r.height), innerHeight, vv ? Math.round(vv.height) : 0);
+  if (navigator.standalone && innerHeight > innerWidth) h = Math.max(h, screen.height);
+  W = Math.round(r.width) || innerWidth; h0 = h; H = h + EX;
+  cv.style.width = W + "px"; cv.style.height = H + "px";
+  cv.width = W * dpr; cv.height = H * dpr;
+  document.documentElement.style.height = document.body.style.height = H + "px";
+  sc = Math.min(W / AW, (h0 - 120) / AH); ox = (W - AW * sc) / 2; oy = (h0 - AH * sc) / 2 - 10;
+}
+addEventListener("resize", resize); addEventListener("orientationchange", resize);
+if (window.visualViewport) visualViewport.addEventListener("resize", resize);
+
+/* ---------- sound ---------- */
+let ac = null, mg = null, sil = null;
+function silentWav(){
+  const n = 4410, b = new DataView(new ArrayBuffer(44 + n * 2)), w = (o, t) => [...t].forEach((c, i) => b.setUint8(o + i, c.charCodeAt(0)));
+  w(0, "RIFF"); b.setUint32(4, 36 + n * 2, true); w(8, "WAVEfmt "); b.setUint32(16, 16, true); b.setUint16(20, 1, true); b.setUint16(22, 1, true);
+  b.setUint32(24, 44100, true); b.setUint32(28, 88200, true); b.setUint16(32, 2, true); b.setUint16(34, 16, true); w(36, "data"); b.setUint32(40, n * 2, true);
+  return URL.createObjectURL(new Blob([b], { type: "audio/wav" }));
+}
+function unlock(){
+  try {
+    if (navigator.audioSession) navigator.audioSession.type = "playback";
+    if (!sil){ sil = new Audio(silentWav()); sil.loop = true; sil.volume = .01; sil.play().catch(() => {}); }
+    if (!ac){ ac = new (window.AudioContext || window.webkitAudioContext)(); mg = ac.createGain(); const cp = ac.createDynamicsCompressor(); mg.connect(cp); cp.connect(ac.destination); }
+    if (ac.state !== "running") ac.resume();
+  } catch {}
+}
+function tone(f, type, v, att, dur, f2, delay = 0){
+  if (!ac) return;
+  if (ac.state !== "running") ac.resume();
+  const t = ac.currentTime + delay, o = ac.createOscillator(), g = ac.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t);
+  if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(v, t + att); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  o.connect(g); g.connect(mg); o.start(t); o.stop(t + dur + .05);
+}
+const pew = () => tone(900, "sine", .12, .004, .12, 300);
+const hitSnd = () => { tone(160, "sawtooth", .18, .004, .2, 60); tone(500, "square", .06, .004, .08, 200); };
+const dashSnd = () => tone(250, "triangle", .12, .01, .25, 700);
+const winSnd = () => [0, 4, 7, 12].forEach((s, i) => tone(440 * Math.pow(2, s / 12), "sine", .2, .01, .8, 0, i * .1));
+const loseSnd = () => [7, 3, 0, -5].forEach((s, i) => tone(330 * Math.pow(2, s / 12), "sine", .18, .01, .8, 0, i * .12));
+
+/* ---------- network ---------- */
+let peer = null, conn = null, isHost = false;
+const PCFG = { debug: 0, config: { iceServers: [
+  { urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" },
+  { urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443", "turn:openrelay.metered.ca:443?transport=tcp"], username: "openrelayproject", credential: "openrelayproject" }
+] } };
+function errBox(m){ let d = document.getElementById("eb"); if (!d){ d = document.createElement("div"); d.id = "eb"; d.style.cssText = "position:fixed;left:8px;right:8px;bottom:8px;z-index:9;background:rgba(160,20,40,.92);color:#fff;font:12px monospace;padding:8px;border-radius:8px;direction:ltr;user-select:text"; document.body.appendChild(d); d.onclick = () => d.remove(); } d.textContent = m; }
+addEventListener("error", e => errBox("JS: " + e.message + " (" + (e.lineno || "?") + ")"));
+addEventListener("unhandledrejection", e => errBox("JS: " + (e.reason && e.reason.message || e.reason)));
+const st = t => $("st").textContent = t;
+function send(o){ try { if (conn && conn.open) conn.send(o); } catch {} }
+function setup(c){
+  conn = c;
+  c.on("open", () => { startMatch(); });
+  c.on("data", onData);
+  c.on("error", e => st("هەڵە لە بەستنەوە: " + (e.type || e)));
+  c.on("close", () => { conn = null; state = "menu"; hideGame(); st("بەرامبەر دەرچوو. دووبارە ژوورێک دروست بکە یان بچۆ ژوورەوە."); $("again").style.display = "none"; showMenu(true); });
+}
+function hostRoom(){
+  unlock();
+  if (typeof Peer === "undefined"){ st("ئینتەرنێت پێویستە، پەڕەکە نوێ بکەرەوە."); return; }
+  isHost = true; const code = String(Math.floor(1000 + Math.random() * 9000));
+  peer = new Peer("duel" + code, PCFG);
+  peer.on("open", () => { st("کۆدی ژوورەکەت:\n" + code + "\nبۆ هاوڕێکەت بنێرە و چاوەڕێ بە…"); showMenu(false); });
+  peer.on("disconnected", () => { try { peer.reconnect(); } catch {} });
+  peer.on("connection", c => { if (conn) { c.close(); return; } setup(c); });
+  peer.on("error", e => { if (e.type === "unavailable-id") hostRoom(); else st("هەڵە: " + e.type + " — ئینتەرنێتەکەت بپشکنە و دووبارە هەوڵ بدە"); });
+}
+function joinRoom(){
+  unlock();
+  const code = $("code").value.trim();
+  if (code.length !== 4) { st("کۆدی ٤ ژمارەیی بنووسە."); return; }
+  if (typeof Peer === "undefined"){ st("ئینتەرنێت پێویستە، پەڕەکە نوێ بکەرەوە."); return; }
+  isHost = false; st("دەبەسترێتەوە…");
+  peer = new Peer(undefined, PCFG);
+  peer.on("disconnected", () => { try { peer.reconnect(); } catch {} });
+  peer.on("open", () => { const c = peer.connect("duel" + code, { reliable: true, serialization: "json" }); setup(c); setTimeout(() => { if (conn && !conn.open) st("نەگەیشت. کۆدەکە دووبارە بپشکنە یان هەردووکتان لە یەک وایفایی بن."); }, 9000); });
+  peer.on("error", e => st(e.type === "peer-unavailable" ? "ئەو ژوورە نەدۆزرایەوە." : "هەڵە: " + e.type));
+}
+function showMenu(full){ $("ov").style.display = "flex"; ["host"].forEach(i => $(i).style.display = full ? "" : "none"); document.querySelector(".row").style.display = full ? "" : "none"; }
+function hideGame(){ $("dash").style.display = $("fire").style.display = "none"; $("msg").textContent = ""; $("sc").textContent = ""; }
+
+/* ---------- game ---------- */
+let state = "menu", timer = 0, me, op, bullets = [], drops = [], myWins = 0, oppWins = 0, dieSent = false, dieRecv = false, myRm = false, opRm = false;
+let joyId = null, jx0 = 0, jy0 = 0, jx = 0, jy = 0, firing = false, shake = 0, sendT = 0, last = 0;
+const mk = (x, y) => ({ x, y, hp: 100, dash: 0, dcd: 0, cd: 0, tx: x, ty: y });
+me = mk(180, 540); op = mk(180, 100);
+function startMatch(){ myWins = oppWins = 0; myRm = opRm = false; $("again").style.display = "none"; startRound(); }
+function startRound(){
+  me = mk(180, 540); op = mk(180, 100); bullets = []; drops = []; dieSent = dieRecv = false;
+  state = "cd"; timer = 2.4; $("ov").style.display = "none"; $("dash").style.display = $("fire").style.display = "flex"; score();
+}
+function score(){ $("sc").textContent = "تۆ " + myWins + "  —  " + oppWins + " بەرامبەر"; }
+function endRound(text, won){
+  state = "round"; timer = 2.4; $("msg").textContent = text; won ? winSnd() : loseSnd(); score();
+}
+function onData(d){
+  if (d.t === "s"){ op.tx = AW - d.x; op.ty = AH - d.y; op.hp = d.h; op.dash = d.d; }
+  else if (d.t === "b"){ bullets.push({ x: AW - d.x, y: AH - d.y, vx: -d.vx, vy: -d.vy, mine: false, l: 2.2 }); tone(600, "sine", .05, .004, .1, 250); }
+  else if (d.t === "die"){
+    if (!dieRecv && (state === "play" || state === "round")){ dieRecv = true; myWins++; if (state === "play") endRound("بردتەوە! 🎉", true); else score(); }
+  } else if (d.t === "rm"){ opRm = true; if (myRm) startMatch(); }
+}
+function burst(x, y, h, n){ for (let i = 0; i < n; i++){ const a = rnd(0, 6.283), v = rnd(40, 170); drops.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, l: 1, h }); } }
+function fireB(){
+  const a = Math.atan2(op.y - me.y, op.x - me.x), vx = Math.cos(a) * 380, vy = Math.sin(a) * 380;
+  bullets.push({ x: me.x, y: me.y, vx, vy, mine: true, l: 2.2 });
+  send({ t: "b", x: Math.round(me.x), y: Math.round(me.y), vx: Math.round(vx), vy: Math.round(vy) }); pew(); me.cd = .3;
+}
+function doDash(){ if (state !== "play" || me.dcd > 0) return; me.dash = .22; me.dcd = 1.8; dashSnd(); }
+function pillarPush(o, r){
+  for (const [px, py, pr] of PIL){ const dx = o.x - px, dy = o.y - py, d = Math.hypot(dx, dy), m = pr + r; if (d < m && d > 0){ o.x = px + dx / d * m; o.y = py + dy / d * m; } }
+  o.x = Math.max(r, Math.min(AW - r, o.x)); o.y = Math.max(r, Math.min(AH - r, o.y));
+}
+function update(dt){
+  if (state === "menu") return;
+  timer -= dt;
+  if (state === "cd"){
+    const n = Math.ceil(timer - .4); $("msg").textContent = n > 0 ? n : "بڕۆ!";
+    if (timer <= 0){ state = "play"; $("msg").textContent = ""; }
+  } else if (state === "round"){
+    if (timer <= 0){ $("msg").textContent = ""; if (myWins >= 3 || oppWins >= 3) finish(); else startRound(); }
+  }
+  op.x += (op.tx - op.x) * Math.min(1, dt * 14); op.y += (op.ty - op.y) * Math.min(1, dt * 14);
+  if (state === "play"){
+    let vx = (jx - jx0) / 50, vy = (jy - jy0) / 50; const m = Math.hypot(vx, vy);
+    if (joyId === null) vx = vy = 0; else if (m > 1){ vx /= m; vy /= m; }
+    const sp = 185 * (me.dash > 0 ? 2.6 : 1);
+    me.x += vx * sp * dt; me.y += vy * sp * dt; pillarPush(me, 14);
+    me.dash = Math.max(0, me.dash - dt); me.dcd = Math.max(0, me.dcd - dt); me.cd = Math.max(0, me.cd - dt);
+    if (firing && me.cd <= 0) fireB();
+    $("dash").style.opacity = me.dcd > 0 ? .35 : 1;
+  }
+  for (let i = bullets.length - 1; i >= 0; i--){
+    const b = bullets[i]; b.x += b.vx * dt; b.y += b.vy * dt; b.l -= dt;
+    let dead = b.l <= 0 || b.x < -10 || b.x > AW + 10 || b.y < -10 || b.y > AH + 10;
+    for (const [px, py, pr] of PIL) if (Math.hypot(b.x - px, b.y - py) < pr){ dead = true; burst(b.x, b.y, 200, 4); }
+    if (!dead && state === "play"){
+      if (!b.mine && Math.hypot(b.x - me.x, b.y - me.y) < 17){ me.hp -= 10; dead = true; shake = 7; hitSnd(); burst(me.x, me.y, 165, 12); }
+      else if (b.mine && Math.hypot(b.x - op.x, b.y - op.y) < 17){ dead = true; burst(op.x, op.y, 330, 10); }
+    }
+    if (dead) bullets.splice(i, 1);
+  }
+  if (state === "play" && me.hp <= 0 && !dieSent){ me.hp = 0; dieSent = true; oppWins++; send({ t: "die" }); burst(me.x, me.y, 165, 40); endRound("دۆڕایت", false); }
+  sendT -= dt;
+  if (sendT <= 0 && state !== "menu"){ sendT = .05; send({ t: "s", x: Math.round(me.x), y: Math.round(me.y), h: me.hp, d: me.dash > 0 ? 1 : 0 }); }
+  for (let i = drops.length - 1; i >= 0; i--){ const d = drops[i]; d.x += d.vx * dt; d.y += d.vy * dt; d.vx *= .94; d.vy *= .94; d.l -= dt * 1.6; if (d.l <= 0) drops.splice(i, 1); }
+  shake *= .88;
+}
+function finish(){
+  state = "over"; const won = myWins > oppWins;
+  $("ov").style.display = "flex"; showMenu(false); $("again").style.display = ""; $("again").disabled = false; hideGame();
+  $("sc").textContent = "";
+  st((won ? "تۆ براوەیت! 🏆" : "بەرامبەرەکەت بردیەوە") + "\n" + myWins + " — " + oppWins);
+}
+$("again").onclick = () => { myRm = true; send({ t: "rm" }); $("again").disabled = true; st("چاوەڕێی بەرامبەر بە…"); if (opRm) startMatch(); };
+$("host").onclick = hostRoom; $("join").onclick = joinRoom;
+cv.addEventListener("pointerdown", e => { unlock(); if (e.clientX < W * .6 && joyId === null){ joyId = e.pointerId; jx0 = jx = e.clientX; jy0 = jy = e.clientY; } });
+cv.addEventListener("pointermove", e => { if (e.pointerId === joyId){ jx = e.clientX; jy = e.clientY; const dx = jx - jx0, dy = jy - jy0, d = Math.hypot(dx, dy); if (d > 70){ jx0 = jx - dx / d * 70; jy0 = jy - dy / d * 70; } } });
+["pointerup", "pointercancel"].forEach(ev => cv.addEventListener(ev, e => { if (e.pointerId === joyId) joyId = null; }));
+const fb = $("fire");
+fb.addEventListener("pointerdown", e => { unlock(); firing = true; });
+["pointerup", "pointercancel", "pointerleave"].forEach(ev => fb.addEventListener(ev, () => firing = false));
+$("dash").addEventListener("pointerdown", () => { unlock(); doDash(); });
+
+/* ---------- draw ---------- */
+function glow(x, y, r, h, a){ const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, `hsla(${h},95%,62%,${a})`); g.addColorStop(1, `hsla(${h},95%,62%,0)`); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill(); }
+function ship(o, ang, h){
+  glow(o.x, o.y, o.dash > 0 ? 46 : 32, h, o.dash > 0 ? .8 : .5);
+  ctx.save(); ctx.translate(o.x, o.y); ctx.rotate(ang);
+  ctx.fillStyle = `hsl(${h},90%,70%)`; ctx.beginPath(); ctx.moveTo(15, 0); ctx.lineTo(-11, 10); ctx.lineTo(-6, 0); ctx.lineTo(-11, -10); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+function bar(x, y, v, h){ ctx.fillStyle = "rgba(255,255,255,.12)"; ctx.fillRect(x, y, 150, 6); ctx.fillStyle = `hsl(${h},90%,60%)`; ctx.fillRect(x, y, 150 * Math.max(0, v) / 100, 6); }
+function draw(){
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = "rgba(7,11,26,.35)"; ctx.fillRect(0, 0, W, H);
+  const sx = shake > .2 ? rnd(-shake, shake) : 0, sy = shake > .2 ? rnd(-shake, shake) : 0;
+  ctx.setTransform(dpr * sc, 0, 0, dpr * sc, (ox + sx) * dpr, (oy + sy) * dpr);
+  ctx.strokeStyle = "rgba(140,160,255,.35)"; ctx.lineWidth = 2; ctx.strokeRect(0, 0, AW, AH);
+  ctx.strokeStyle = "rgba(140,160,255,.12)"; ctx.beginPath(); ctx.moveTo(0, AH / 2); ctx.lineTo(AW, AH / 2); ctx.stroke();
+  ctx.globalCompositeOperation = "lighter";
+  for (const [px, py, pr] of PIL){ glow(px, py, pr * 2.4, 260, .35); ctx.strokeStyle = "hsla(260,90%,75%,.8)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(px, py, pr, 0, 6.283); ctx.stroke(); }
+  if (state !== "menu"){
+    ship(op, Math.atan2(me.y - op.y, me.x - op.x), 330);
+    ship(me, Math.atan2(op.y - me.y, op.x - me.x), 165);
+    for (const b of bullets){ const h = b.mine ? 165 : 330; glow(b.x, b.y, 11, h, .8); ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(b.x, b.y, 2.6, 0, 6.283); ctx.fill(); }
+    for (const d of drops){ ctx.fillStyle = `hsla(${d.h},95%,70%,${d.l})`; ctx.beginPath(); ctx.arc(d.x, d.y, 2.4 * d.l + .5, 0, 6.283); ctx.fill(); }
+    bar(105, 12, op.hp, 330); bar(105, AH - 18, me.hp, 165);
+  }
+  if (joyId !== null && state !== "menu"){
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.strokeStyle = "rgba(255,255,255,.3)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(jx0, jy0, 44, 0, 6.283); ctx.stroke();
+    glow(jx, jy, 26, 165, .7);
+  }
+}
+function frame(now){ requestAnimationFrame(frame); const dt = Math.min(.05, (now - last) / 1000 || .016); last = now; update(dt); draw(); }
+resize(); requestAnimationFrame(n => { last = n; frame(n); });
+</script>
+</body>
+</html>
